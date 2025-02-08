@@ -39,8 +39,8 @@ function formatDate(date) {
 function parseRange(req, file) {
     const range = req.headers.get("Range");
     return range ? range.split("=").at(-1).split("-").map((v) => {
-        return v ? Number(v) : file.size;
-    }) : [0, file.size];
+        return v ? Number(v) : null;
+    }) : [null, null];
 }
 
 function fetchIcon(path) {
@@ -187,10 +187,15 @@ serve({
                 },
             });
         } else {
-            const [start, end] = parseRange(req, file);
+            let [start, end] = parseRange(req, file);
+            if (start === null) {
+                return new Response(file);
+            }
+            if (end == null) end = Math.min(file.size, start + 16 * 1024 *  1024);
             return new Response(file.slice(start, end), {
+                status: 206,
                 headers: {
-                    "content-range": `bytes ${start}-${end}/${file.size}`,
+                    "content-range": `bytes ${start}-${end-1}/${file.size}`,
                     "content-type": file.type,
                 }
             });
