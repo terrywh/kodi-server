@@ -133,6 +133,8 @@ class SourceBuilder {
         }
         const entries = await readdir(path);
         for (const entry of entries) {
+            if (entry.startsWith(".")) continue;
+
             const filepath = join(path, entry)
             const filelink = encodeURIComponent(entry);
 
@@ -178,56 +180,91 @@ class SourceBuilder {
 
 }
 
+const route = new Map();
 
+function handleFile(method, handler) {
+    route.set(`${method}:file`, handler);
+}
+
+function handleDirectory(method, handler) {
+    route.set(`${method}:directory`, handler);
+}
+
+function handleNotFound(req, kind) {
+    if (req.method == "HEAD") {
+        return new Response(null, {status: 404});
+    }
+    return new Response(`${kind} not found`, {status: 404});
+}
+
+async function handle(req) {
+    const url = new URL(req.url);
+    const path = url.pathname.split("/").map(decodeURIComponent).join("/");
+    const file = Bun.file(join("./", path));
+    console.info(new Date(), req.method, path);
+
+    let stat;
+    try {
+        stat = await file.stat();
+    } catch(ex) {
+        return handleNotFound(req, "resource");
+    }
+    
+    const handler = route.get(`${req.method}:${stat.isDirectory()?"directory":stat.isFile()?"file":"unknown"}`);
+    if (!handler) {
+        return handleNotFound(req, "handler");
+    }
+
+    return await handler(file, stat);
+}
+
+
+handleFile("HEAD", async function(file, stat) {
+    return new Response(file.slice(0, 0));
+});
+
+handleFile("GET", async function(file, stat) {
+    if (extname(file.name) == "") {
+        return new Response(file, {
+            headers: {
+                "content-type": "text/plain",
+            },
+        });
+    } 
+    let [start, end] = parseRange(req, file);
+    if (start === null || start == 0 && end == null) {
+        return new Response(file);
+    }
+    if (end == null || end >= file.size - 1) {
+        return new Response(file.slice(start), {status: 206});
+    }
+    return new Response(file.slice(start, end + 1), {
+        status: 206,
+        headers: {
+            "accept-ranges": "bytes",
+            "content-range": `bytes ${start}-${end}/${file.size}`,
+            "content-type": file.type,
+        }
+    });
+});
+
+handleDirectory("GET", async function(file, stat) {
+    const builder = new SourceBuilder();
+    await builder.directory(file.name);
+    return new Response(builder.done(), {
+        headers: {
+            "content-type": "text/html; charset=utf-8",
+        },
+    });
+});
+
+handleDirectory("HEAD", async function(file, stat) {
+    return new Response(null, {status: 405});
+})
 
 serve({
     async fetch(req) {
-        const url = new URL(req.url);
-        const path = url.pathname.split("/").map(decodeURIComponent).join("/");
-        const file = Bun.file(join("./", path));
-
-        console.info(new Date(), req.method, path);
-
-        let stat;
-        try {
-            stat = await file.stat();
-        } catch(ex) {
-            return new Response(null, {status: 404});
-        }
-        
-        if (stat.isDirectory()) {
-            const builder = new SourceBuilder();
-            await builder.directory(file.name);
-            return new Response(builder.done(), {
-                headers: {
-                    "content-type": "text/html; charset=utf-8",
-                },
-            });
-        } else if (req.method == "HEAD") {
-            return new Response(file.slice(0, 0));
-        } else if (extname(file.name) == "") {
-            return new Response(file, {
-                headers: {
-                    "content-type": "text/plain",
-                },
-            });
-        } else {
-            let [start, end] = parseRange(req, file);
-            if (start === null || start == 0 && end == null) {
-                return new Response(file);
-            }
-            if (end == null || end >= file.size - 1) {
-                return new Response(file.slice(start), {status: 206});
-            }
-            return new Response(file.slice(start, end + 1), {
-                status: 206,
-                headers: {
-                    "accept-ranges": "bytes",
-                    "content-range": `bytes ${start}-${end}/${file.size}`,
-                    "content-type": file.type,
-                }
-            });
-        }
+        return await handle(req);
     },
     // port: 3000,
 })
