@@ -90,9 +90,23 @@ class SourceBuilder {
      */
     #html
     constructor() {
-        this.reset();
+        this.#start();
     }
 
+    #start() {
+        this.#html = `<html>
+<head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css" crossorigin="anonymous">
+</head>
+<body>`;
+    }
+
+    #end() {
+        this.#html += `
+</body>
+</html>`;
+    }
     /**
      * 
      * @param {*} path 
@@ -113,6 +127,7 @@ class SourceBuilder {
     }
 
     async directory(path) {
+        this.#directorStart(path);
         if (path != "./") {
             this.file("../", `上一层`, null, null);
         }
@@ -125,29 +140,39 @@ class SourceBuilder {
             const stat = await file.stat();
             this.file(stat.isDirectory() ? `${filelink}/` : `${filelink}`, basename(entry), stat.mtime, stat.isDirectory() ? null : stat.size);
         }
+        this.#directorEnd();
     }
 
-    reset() {
-        this.#html = `
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" crossorigin="anonymous">
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css" crossorigin="anonymous">
+    #directorStart(path) {
+        this.#html += `
+<div class="container">
+<div class="row pt-3 pb-2"><div class="col-12">
+    <h5>当前路径：<code>${path == "./" ? "/" : "/" + path}</code></h5>
+</div></div>
+<div class="row"><div class="col-12">
 <table class="table">
     <thead>
         <tr>
             <th>名称</th>
-            <th>时间</th>
-            <th>大小</th>
+            <th style="width: 14em;">时间</th>
+            <th style="width: 5em;">大小</th>
         </tr>
     </thead>
     <tbody>
         `;
     }
 
-    done() {
+    #directorEnd() {
         this.#html += `</tbody>
-</table>`
+</table>
+</div></div>
+</div>`
+    }
+
+    done() {
+        this.#end();
         const r = this.#html;
-        this.reset();
+        this.#start();
         return r;
     }
 
@@ -179,7 +204,7 @@ serve({
                 },
             });
         } else if (req.method == "HEAD") {
-            return new Response(f.slice(0, 0));
+            return new Response(file.slice(0, 0));
         } else if (extname(file.name) == "") {
             return new Response(file, {
                 headers: {
@@ -188,14 +213,17 @@ serve({
             });
         } else {
             let [start, end] = parseRange(req, file);
-            if (start === null) {
+            if (start === null || start == 0 && end == null) {
                 return new Response(file);
             }
-            if (end == null) end = Math.min(file.size, start + 16 * 1024 *  1024);
-            return new Response(file.slice(start, end), {
+            if (end == null || end >= file.size - 1) {
+                return new Response(file.slice(start), {status: 206});
+            }
+            return new Response(file.slice(start, end + 1), {
                 status: 206,
                 headers: {
-                    "content-range": `bytes ${start}-${end-1}/${file.size}`,
+                    "accept-ranges": "bytes",
+                    "content-range": `bytes ${start}-${end}/${file.size}`,
                     "content-type": file.type,
                 }
             });
