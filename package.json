@@ -1,5 +1,5 @@
 {
-  "name": "kodi-bun",
+  "name": "kodi-server",
   "module": "main.js",
   "type": "module",
   "devDependencies": {
