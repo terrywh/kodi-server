@@ -2,6 +2,8 @@
 #include <boost/beast/core/string.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/file_status.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <sstream>
 #include <format>
 
 std::string format_size(std::size_t size) {
@@ -11,6 +13,16 @@ std::string format_size(std::size_t size) {
 		return std::format("{:.1f}M", double(size)/1024/1024);
 	else
 		return std::format("{:.1f}K", double(size)/1024);
+}
+
+std::string format_date(std::time_t time) {
+	auto ptime = boost::posix_time::from_time_t(time);
+	return std::format("{:04d}-{:02d}-{:02d} {:02d}:{:02d}", 
+			static_cast<int>(ptime.date().year()), 
+			static_cast<int>(ptime.date().month()),
+			static_cast<int>(ptime.date().day()),
+			ptime.time_of_day().hours(), ptime.time_of_day().minutes());
+	return boost::posix_time::to_iso_extended_string(ptime);
 }
 
 std::string_view parse_type(const boost::filesystem::path& path, bool is_dir) {

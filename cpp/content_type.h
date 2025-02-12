@@ -6,6 +6,7 @@
 #include <string_view>
 
 std::string format_size(std::size_t size);
+std::string format_date(std::time_t time);
 std::string_view parse_type(const boost::filesystem::path& path, bool is_dir = false);
 std::string_view parse_icon(const boost::filesystem::path& path, bool is_dir = false);
 
