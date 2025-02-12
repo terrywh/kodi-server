@@ -29,21 +29,25 @@ func ParseType(path string) string {
 	case ".js":
 		return "text/javascript"
 	case ".json":
-		fallthrough
+		return "text/json"
 	case ".yaml":
-		fallthrough
+		return "text/yaml"
 	case ".toml":
-		fallthrough
+		return "text/toml"
 	case ".html":
-		fallthrough
+		return "text/html"
 	case ".php":
 		fallthrough
 	case ".cpp":
 		fallthrough
+	case ".c":
+		fallthrough
+	case ".h":
+		fallthrough
 	case ".go":
 		fallthrough
 	case ".rs":
-		return fmt.Sprintf("text/%s", ext[1:])
+		return "text/plain"
 	case ".flac":
 		fallthrough
 	case ".wma":
@@ -104,6 +108,10 @@ func ParseIcon(path string) string {
 	case ".php":
 		fallthrough
 	case ".cpp":
+		fallthrough
+	case ".h":
+		fallthrough
+	case ".c":
 		fallthrough
 	case ".go":
 		fallthrough

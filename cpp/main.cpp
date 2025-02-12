@@ -245,7 +245,7 @@ public:
                     << "\t\t\t<td>" << parse_icon(i->path(), false) << " <a href=\""
                     << i->path().filename().string() << "\">" << i->path().filename().string() << "</a></td>"
                     << "\t\t\t<td class=\"text-secondary\"><i class=\"bi bi-calendar2-day\"></i> " << 
-                        format_date(boost::filesystem::last_write_time(path_)) << "</td>\n"
+                        format_date(boost::filesystem::last_write_time(i->path())) << "</td>\n"
                     << "\t\t\t<td class=\"text-secondary\">" << format_size(size) << "</td>\n";
             }
             ss << "\t\t</tr>\n";

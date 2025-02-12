@@ -22,7 +22,7 @@ std::string format_date(std::time_t time) {
 			static_cast<int>(ptime.date().month()),
 			static_cast<int>(ptime.date().day()),
 			ptime.time_of_day().hours(), ptime.time_of_day().minutes());
-	return boost::posix_time::to_iso_extended_string(ptime);
+	// return boost::posix_time::to_iso_extended_string(ptime);
 }
 
 std::string_view parse_type(const boost::filesystem::path& path, bool is_dir) {
@@ -45,13 +45,17 @@ std::string_view parse_type(const boost::filesystem::path& path, bool is_dir) {
 	else if (boost::beast::iequals(ext, ".html"))
 		return "text/html";
 	else if (boost::beast::iequals(ext, ".php"))
-		return "text/php";
+		return "text/plain";
 	else if (boost::beast::iequals(ext, ".cpp"))
-		return "text/cpp";
+		return "text/plain";
+	else if (boost::beast::iequals(ext, ".c"))
+		return "text/plain";
+	else if (boost::beast::iequals(ext, ".h"))
+		return "text/plain";
 	else if (boost::beast::iequals(ext, ".go"))
-		return "text/go";
+		return "text/plain";
 	else if (boost::beast::iequals(ext, ".rs"))
-		return "test/rs";
+		return "text/plain";
 	else if (boost::beast::iequals(ext, ".flac"))
         return "audio/flac";
 	else if (boost::beast::iequals(ext, ".wma"))
