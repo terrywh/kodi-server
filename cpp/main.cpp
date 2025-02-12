@@ -14,6 +14,10 @@
 #include <sstream>
 #include <vector>
 
+#ifdef __linux__
+#include <sys/sendfile.h>
+#endif // linux
+
 #include "content_type.h"
 
 template <class T>
@@ -35,8 +39,8 @@ struct do_sendfile_impl: public boost::asio::coroutine {
     const boost::filesystem::path&  path_;
     std::size_t                     size_;
     boost::asio::mutable_buffer   buffer_;
-    std::size_t     start_, end_, remain_;
-
+    ssize_t         start_, end_, remain_;
+ 
     explicit do_sendfile_impl(boost::asio::ip::tcp::socket& socket,
         boost::asio::mutable_buffer   buffer,
         boost::asio::stream_file& file,
@@ -64,6 +68,27 @@ struct do_sendfile_impl: public boost::asio::coroutine {
             "Content-Range: bytes {}-{}/{}\r\n\r\n", parse_type(path_), end_ - start_ + 1, start_, end_, size_) - static_cast<char*>(buffer_.data());
 
         BOOST_ASIO_CORO_YIELD boost::asio::async_write(socket_, boost::asio::buffer(buffer_, size), std::move(self));
+        if (error) {
+            self.complete(error, size);
+            return;
+        }
+
+#ifdef __linux__
+        while (remain_ > 0 && !error) {
+            // 注意：sendfile 调用后 start_ 会被修改
+            size = ::sendfile(socket_.native_handle(), file_.native_handle(), &start_, end_ - start_ + 1);
+            if (size < 0) {
+                self.complete(boost::system::error_code{errno, boost::system::system_category()}, 0);
+                return;
+            }
+            remain_ -= size;
+            BOOST_ASIO_CORO_YIELD socket_.async_wait(boost::asio::socket_base::wait_write, std::move(self));
+        }
+
+#elif defined(BOOST_ASIO_WINDOWS)
+        // 参考：https://www.boost.io/doc/libs/latest/doc/html/boost_asio/example/cpp11/windows/transmit_file.cpp
+        
+#else // NOT __linux__
         file_.seek(start_, boost::asio::file_base::seek_set);
 
         while (remain_ > 0) {    
@@ -78,6 +103,9 @@ struct do_sendfile_impl: public boost::asio::coroutine {
                 self.complete(error, size);
             }
         };
+
+#endif // NOT __linux__
+
         self.complete(error, size);
         // socket_.async_wait()
     }}
@@ -127,7 +155,7 @@ public:
             stat_ = boost::filesystem::status(path_, error);
             BOOST_LOG_TRIVIAL(debug) << req_.method_string() << " " << path_;
             if (error) break;
-            size_ = boost::filesystem::file_size(path_);
+            size_ = boost::filesystem::file_size(path_, error);
 
             if (stat_.type() == boost::filesystem::directory_file) {
                 rsp_.set("content-type", "text/html");
@@ -135,6 +163,7 @@ public:
                 rsp_.prepare_payload();
                 BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, rsp_, callback(this));
             } else if (req_.count("range") > 0) {
+                file_.close(error);
                 file_.open(path_.string(), boost::asio::file_base::read_only, error);
                 if (error) break;
                 BOOST_ASIO_CORO_YIELD do_sendfile(socket_, boost::asio::buffer(buffer_), file_, path_, size_,
@@ -147,6 +176,7 @@ public:
                 rsp_.set("content-length", std::to_string(size_));
                 BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, rsp_, callback(this));
             } else {
+                rsp_file_.body().close();
                 rsp_file_.body().open(path_.c_str(), boost::beast::file_mode::read, error);
                 if (error) break;
                 rsp_file_.prepare_payload();
@@ -157,11 +187,19 @@ public:
         } while(!error && req_.keep_alive() && !req_.need_eof());
 
         if (error) 
-            if (error != boost::system::errc::no_such_file_or_directory)
+            if (error == boost::system::errc::no_such_file_or_directory ) {
+                rsp_.set("content-type", "text/plain");
+                rsp_.body() = "resource not found";
+                rsp_.prepare_payload();
+                // rsp_.set("content-type", "text/html");
+                BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, rsp_, callback(this));
+            } else if (error != boost::system::errc::connection_reset && error != boost::system::errc::broken_pipe) {
                 BOOST_LOG_TRIVIAL(error) << "error = (" << error << ") " << error.message(); 
+            }
     }}
 
     std::string build_directory(const boost::filesystem::path& path) {
+        boost::system::error_code error;
         std::stringstream ss;
         ss << R"HTML(<html>
 <head>
@@ -192,7 +230,7 @@ public:
             if (i->path().filename().string()[0] == '.' || i->path().filename() == "node_modules")
                 continue;
 
-            std::size_t size = boost::filesystem::file_size(i->path());
+            std::size_t size = boost::filesystem::file_size(i->path(), error);
             ss << "\t\t<tr>";
                 
                 
@@ -285,6 +323,9 @@ public:
 };
 
 int main(int argc, char* argv[]) {
+#ifdef __linux__
+    signal(SIGPIPE, SIG_IGN);
+#endif // __linux_
     int size = boost::thread::hardware_concurrency() / 2;
     boost::asio::io_context io { size };
 
