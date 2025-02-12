@@ -5,9 +5,12 @@
 #include <boost/thread.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/url.hpp>
+#include <boost/charconv/from_chars.hpp>
 
+#include <format>
 #include <string>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <vector>
 
@@ -26,6 +29,70 @@ public:
     }
 };
 
+struct do_sendfile_impl: public boost::asio::coroutine {
+    boost::asio::ip::tcp::socket& socket_;
+    boost::asio::stream_file&       file_;
+    const boost::filesystem::path&  path_;
+    std::size_t                     size_;
+    boost::asio::mutable_buffer   buffer_;
+    std::size_t     start_, end_, remain_;
+
+    explicit do_sendfile_impl(boost::asio::ip::tcp::socket& socket,
+        boost::asio::mutable_buffer   buffer,
+        boost::asio::stream_file& file,
+        const boost::filesystem::path&  path,
+        std::size_t                     size,
+        std::size_t start, std::size_t   end)
+    : socket_(socket)
+    , file_(file)
+    , path_(path)
+    , size_(size)
+    , buffer_(buffer)
+    , start_(start)
+    , end_(end)
+    , remain_(end - start + 1) {}
+
+    do_sendfile_impl(const do_sendfile_impl& self) = default;
+    do_sendfile_impl(do_sendfile_impl&& self) = default;
+
+    template <class Self>
+    void operator()(Self& self, boost::system::error_code error = {}, std::size_t size = 0) { BOOST_ASIO_CORO_REENTER(this) {
+        size = std::format_to(static_cast<char*>(buffer_.data()), // std::counted_iterator{static_cast<char*>(buffer_.data), buffer_.size()},
+            "HTTP/1.1 206 Partial Content\r\n" 
+            "Content-Type: {}\r\n"
+            "Content-Length: {}\r\n"
+            "Content-Range: bytes {}-{}/{}\r\n\r\n", parse_type(path_), end_ - start_ + 1, start_, end_, size_) - static_cast<char*>(buffer_.data());
+
+        BOOST_ASIO_CORO_YIELD boost::asio::async_write(socket_, boost::asio::buffer(buffer_, size), std::move(self));
+        file_.seek(start_, boost::asio::file_base::seek_set);
+
+        while (remain_ > 0) {    
+            BOOST_ASIO_CORO_YIELD file_.async_read_some(buffer_, std::move(self));
+            if (error) {
+                self.complete(error, size);
+                return;
+            }
+            remain_ -= size;
+            BOOST_ASIO_CORO_YIELD boost::asio::async_write(socket_, boost::asio::buffer(buffer_, size), std::move(self));
+            if (error) {
+                self.complete(error, size);
+            }
+        };
+        self.complete(error, size);
+        // socket_.async_wait()
+    }}
+};
+
+template <class MutableBuffer, class CompleteToken>
+auto do_sendfile(boost::asio::ip::tcp::socket& socket, MutableBuffer buffer, boost::asio::stream_file& file,
+        const boost::filesystem::path& path, std::size_t size, std::pair<std::size_t, std::size_t> range, CompleteToken&& token) 
+    -> decltype(boost::asio::async_compose<CompleteToken, void (boost::system::error_code, std::size_t)>(
+        std::declval<do_sendfile_impl>(), token, socket)) {
+    
+    return boost::asio::async_compose<CompleteToken, void (boost::system::error_code, std::size_t)>(
+        do_sendfile_impl{socket, buffer, file, path, size, range.first, range.second}, token, socket);
+}
+
 class handler: public boost::asio::coroutine, public std::enable_shared_from_this<handler> {
     boost::asio::io_context& io_;
     boost::asio::ip::tcp::socket    socket_;
@@ -34,17 +101,21 @@ class handler: public boost::asio::coroutine, public std::enable_shared_from_thi
     boost::beast::http::request<boost::beast::http::empty_body>    req_;
     boost::url url_;
     boost::beast::flat_buffer buf_;
-    boost::beast::http::response<boost::beast::http::string_body>  rsp_;
-    boost::beast::http::response<boost::beast::http::file_body>   file_;
+    boost::beast::http::response<boost::beast::http::string_body> rsp_;
+    boost::beast::http::response<boost::beast::http::file_body>   rsp_file_;
 
     boost::filesystem::path path_;
     boost::filesystem::file_status stat_;
+    std::size_t size_;
+    boost::asio::stream_file file_;
+    char buffer_[256 * 1024];
 
 public:
     explicit handler(boost::asio::io_context& io, boost::asio::ip::tcp::socket&& socket,
         boost::asio::ip::tcp::endpoint address)
     : io_(io)
-    , socket_(std::move(socket)) {}
+    , socket_(std::move(socket))
+    , file_(io) {}
 
     void operator()(boost::system::error_code error = {}, std::size_t = 0) { BOOST_ASIO_CORO_REENTER(this) {
         do {
@@ -56,21 +127,34 @@ public:
             stat_ = boost::filesystem::status(path_, error);
             BOOST_LOG_TRIVIAL(debug) << req_.method_string() << " " << path_;
             if (error) break;
+            size_ = boost::filesystem::file_size(path_);
+
             if (stat_.type() == boost::filesystem::directory_file) {
                 rsp_.set("content-type", "text/html");
                 rsp_.body() = build_directory(path_);
                 rsp_.prepare_payload();
                 BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, rsp_, callback(this));
-            } else if (req_.count("Range")) {
-
-            } else {
-                file_.body().open(path_.c_str(), boost::beast::file_mode::read, error);
-                file_.prepare_payload();
+            } else if (req_.count("range") > 0) {
+                file_.open(path_.string(), boost::asio::file_base::read_only, error);
                 if (error) break;
-                BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, file_, callback(this));
+                BOOST_ASIO_CORO_YIELD do_sendfile(socket_, boost::asio::buffer(buffer_), file_, path_, size_,
+                    parse_range(req_.at("range")), callback(this));
+            } else if (req_.method() == boost::beast::http::verb::head) {
+                rsp_.body().clear();
+                rsp_.prepare_payload();
+
+                rsp_.set("content-type", parse_type(path_, false));
+                rsp_.set("content-length", std::to_string(size_));
+                BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, rsp_, callback(this));
+            } else {
+                rsp_file_.body().open(path_.c_str(), boost::beast::file_mode::read, error);
+                if (error) break;
+                rsp_file_.prepare_payload();
+                rsp_file_.set("content-type", parse_type(path_, false));
+                BOOST_ASIO_CORO_YIELD boost::beast::http::async_write(socket_, rsp_file_, callback(this));
             }
             
-        } while(req_.keep_alive() && !req_.need_eof());
+        } while(!error && req_.keep_alive() && !req_.need_eof());
 
         if (error) 
             if (error != boost::system::errc::no_such_file_or_directory)
@@ -108,17 +192,22 @@ public:
             if (i->path().filename().string()[0] == '.' || i->path().filename() == "node_modules")
                 continue;
 
-            ss << "\t\t<tr>"
-                << "\t\t\t<td>" << parse_icon(i->path(), i->status()) << " <a href=\"";
+            std::size_t size = boost::filesystem::file_size(i->path());
+            ss << "\t\t<tr>";
+                
                 
             if (i->status().type() == boost::filesystem::file_type::directory_file) {
-                ss << i->path().filename().string() << "/\">" << i->path().filename().string() << "</a></td>"
+                ss 
+                    << "\t\t\t<td>" << parse_icon(i->path(), true) << " <a href=\""
+                    << i->path().filename().string() << "/\">" << i->path().filename().string() << "</a></td>"
                     << "\t\t\t<td> - </td>\n"
                     << "\t\t\t<td> - </td>\n";
             } else {
-                ss << i->path().filename().string() << "\">" << i->path().filename().string() << "</a></td>"
+                ss 
+                    << "\t\t\t<td>" << parse_icon(i->path(), false) << " <a href=\""
+                    << i->path().filename().string() << "\">" << i->path().filename().string() << "</a></td>"
                     << "\t\t\t<td class=\"text-secondary\"><i class=\"bi bi-calendar2-day\"></i> " << "date" << "</td>\n"
-                    << "\t\t\t<td class=\"text-secondary\">" << format_size(i->path().size()) << "</td>\n";
+                    << "\t\t\t<td class=\"text-secondary\">" << format_size(size) << "</td>\n";
             }
             ss << "\t\t</tr>\n";
 
@@ -134,6 +223,17 @@ public:
 </html>)HTML";
 
         return ss.str();
+    }
+
+    std::pair<std::size_t, std::size_t> parse_range(std::string_view range) {
+        std::size_t eq = range.find_first_of('=');
+        std::size_t sl = range.find_first_of('-', eq);
+        
+        std::size_t start, end;
+        boost::charconv::from_chars(range.substr(eq+1, sl-eq), start);
+        boost::charconv::from_chars(range.substr(sl+1), end);
+        if (end == 0 || end >= size_) end = size_ - 1;
+        return std::make_pair(start, end);
     }
 
     friend class acceptor;

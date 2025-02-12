@@ -1,4 +1,5 @@
 #include "content_type.h"
+#include <boost/beast/core/string.hpp>
 #include <boost/filesystem/path.hpp>
 #include <boost/filesystem/file_status.hpp>
 #include <format>
@@ -12,121 +13,121 @@ std::string format_size(std::size_t size) {
 		return std::format("{:.1f}K", double(size)/1024);
 }
 
-std::string_view parse_type(const boost::filesystem::path& path, const boost::filesystem::file_status& stat) {
-	if (auto ext = path.extension(); ext == ".mp4")
+std::string_view parse_type(const boost::filesystem::path& path, bool is_dir) {
+	if (auto ext = path.extension().string(); boost::beast::iequals(ext, ".mp4"))
         return "video/mp4";
-    else if (ext == ".mkv")
+    else if (boost::beast::iequals(ext, ".mkv"))
         return "video/mkv";
-    else if (ext == ".webm") 
+    else if (boost::beast::iequals(ext, ".webm")) 
         return "video/webm";
-	else if (ext == ".css")
+	else if (boost::beast::iequals(ext, ".css"))
 		return "text/stylesheet";
-	else if (ext == ".js")
+	else if (boost::beast::iequals(ext, ".js"))
 		return "text/javascript";
-	else if (ext == ".json")
+	else if (boost::beast::iequals(ext, ".json"))
 		return "text/json";
-	else if (ext == ".yaml")
+	else if (boost::beast::iequals(ext, ".yaml"))
 		return "text/yaml";
-	else if (ext == ".toml")
+	else if (boost::beast::iequals(ext, ".toml"))
 		return "text/toml";
-	else if (ext == ".html")
+	else if (boost::beast::iequals(ext, ".html"))
 		return "text/html";
-	else if (ext == ".php")
+	else if (boost::beast::iequals(ext, ".php"))
 		return "text/php";
-	else if (ext == ".cpp")
+	else if (boost::beast::iequals(ext, ".cpp"))
 		return "text/cpp";
-	else if (ext == ".go")
+	else if (boost::beast::iequals(ext, ".go"))
 		return "text/go";
-	else if (ext == ".rs")
+	else if (boost::beast::iequals(ext, ".rs"))
 		return "test/rs";
-	else if (ext == ".flac")
+	else if (boost::beast::iequals(ext, ".flac"))
         return "audio/flac";
-	else if (ext == ".wma")
+	else if (boost::beast::iequals(ext, ".wma"))
         return "audio/wma";
-	else if (ext == ".mp3")
+	else if (boost::beast::iequals(ext, ".mp3"))
         return "audio/mp3";
-	else if (ext == ".wav")
+	else if (boost::beast::iequals(ext, ".wav"))
         return "audio/wav";
-	else if (ext == ".ogg")
+	else if (boost::beast::iequals(ext, ".ogg"))
         return "audio/ogg";
-	else if (ext == ".gif")
+	else if (boost::beast::iequals(ext, ".gif"))
         return "image/gif";
-	else if (ext == ".bmp")
+	else if (boost::beast::iequals(ext, ".bmp"))
         return "image/bmp";
-	else if (ext == ".ico")
+	else if (boost::beast::iequals(ext, ".ico"))
         return "image/ico";
-	else if (ext == ".jpg")
+	else if (boost::beast::iequals(ext, ".jpg"))
         return "image/jpeg";
-	else if (ext == ".jpeg")
+	else if (boost::beast::iequals(ext, ".jpeg"))
         return "image/jpeg";
-	else if (ext == ".heic")
+	else if (boost::beast::iequals(ext, ".heic"))
         return "image/heic";
-	else if (ext == ".webp")
+	else if (boost::beast::iequals(ext, ".webp"))
         return "image/webp";
-	else if (ext == ".txt")
+	else if (boost::beast::iequals(ext, ".txt"))
 		return "text/plain";
-	else if (ext == ".md")
+	else if (boost::beast::iequals(ext, ".md"))
 		return "text/markdown";
-	else if (stat.type() == boost::filesystem::file_type::directory_file)
+	else if (is_dir)
         return "";
     else
         return "application/octet-stream";
 }
 
-std::string_view parse_icon(const boost::filesystem::path& path, const boost::filesystem::file_status& stat) {
-	if (auto ext = path.extension(); ext == ".mp4")
+std::string_view parse_icon(const boost::filesystem::path& path, bool is_dir) {
+	if (auto ext = path.extension().string(); boost::beast::iequals(ext, ".mp4"))
 		return R"HTML(<i class="bi bi-film"></i>)HTML";
-	else if (ext == ".mkv")
+	else if (boost::beast::iequals(ext, ".mkv"))
         return R"HTML(<i class="bi bi-film"></i>)HTML";
-	else if (ext == ".webm")
+	else if (boost::beast::iequals(ext, ".webm"))
         return R"HTML(<i class="bi bi-film"></i>)HTML";
-	else if (ext == ".css")
+	else if (boost::beast::iequals(ext, ".css"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".js")
+	else if (boost::beast::iequals(ext, ".js"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".json")
+	else if (boost::beast::iequals(ext, ".json"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".yaml")
+	else if (boost::beast::iequals(ext, ".yaml"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".toml")
+	else if (boost::beast::iequals(ext, ".toml"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".html")
+	else if (boost::beast::iequals(ext, ".html"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".php")
+	else if (boost::beast::iequals(ext, ".php"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".cpp")
+	else if (boost::beast::iequals(ext, ".cpp"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".go")
+	else if (boost::beast::iequals(ext, ".go"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".rs")
+	else if (boost::beast::iequals(ext, ".rs"))
         return R"HTML(<i class="bi bi-file-code"></i>)HTML";
-	else if (ext == ".flac")
+	else if (boost::beast::iequals(ext, ".flac"))
         return R"HTML(<i class="bi bi-file-music"></i>)HTML";
-	else if (ext == ".wma")
+	else if (boost::beast::iequals(ext, ".wma"))
         return R"HTML(<i class="bi bi-file-music"></i>)HTML";
-	else if (ext == ".mp3")
+	else if (boost::beast::iequals(ext, ".mp3"))
         return R"HTML(<i class="bi bi-file-music"></i>)HTML";
-	else if (ext == ".wav")
+	else if (boost::beast::iequals(ext, ".wav"))
         return R"HTML(<i class="bi bi-file-music"></i>)HTML";
-	else if (ext == ".ogg")
+	else if (boost::beast::iequals(ext, ".ogg"))
         return R"HTML(<i class="bi bi-file-music"></i>)HTML";
-	else if (ext == ".gif")
+	else if (boost::beast::iequals(ext, ".gif"))
         return R"HTML(<i class="bi bi-file-image"></i>)HTML";
-	else if (ext == ".bmp")
+	else if (boost::beast::iequals(ext, ".bmp"))
         return R"HTML(<i class="bi bi-file-image"></i>)HTML";
-	else if (ext == ".jpg")
+	else if (boost::beast::iequals(ext, ".jpg"))
         return R"HTML(<i class="bi bi-file-image"></i>)HTML";
-	else if (ext == ".jpeg")
+	else if (boost::beast::iequals(ext, ".jpeg"))
         return R"HTML(<i class="bi bi-file-image"></i>)HTML";
-	else if (ext == ".heic")
+	else if (boost::beast::iequals(ext, ".heic"))
         return R"HTML(<i class="bi bi-file-image"></i>)HTML";
-	else if (ext == ".webp")
+	else if (boost::beast::iequals(ext, ".webp"))
 		return R"HTML(<i class="bi bi-file-image"></i>)HTML";
-	else if (ext == ".txt")
+	else if (boost::beast::iequals(ext, ".txt"))
         return R"HTML(<i class="bi bi-file-text"></i>)HTML";
-	else if (ext == ".md")
+	else if (boost::beast::iequals(ext, ".md"))
 		return R"HTML(<i class="bi bi-file-text"></i>)HTML";
-	else if (stat.type() == boost::filesystem::file_type::directory_file)
+	else if (is_dir)
         return R"HTML(<i class="bi bi-folder"></i>)HTML";
     else
 		return "";
