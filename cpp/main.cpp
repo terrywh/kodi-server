@@ -223,9 +223,11 @@ public:
             <th style="width: 5em;">大小</th>
 		</tr>
 	</thead>
-	<tbody>
-		<tr><td><i class="bi bi-box-arrow-in-up"></i> <a href="../">上一层</a></td><td>&nbsp;</td><td>&nbsp;</td></tr>
-    )HTML";
+	<tbody>)HTML";
+        
+        if (path.has_parent_path())
+		    ss << R"HTML(<tr><td><i class="bi bi-box-arrow-in-up"></i> <a href="../">上一层</a></td><td>&nbsp;</td><td>&nbsp;</td></tr>)HTML";
+
         for (auto i = boost::filesystem::directory_iterator(path); i!= boost::filesystem::directory_iterator(); i++) {
             if (i->path().filename().string()[0] == '.' || i->path().filename() == "node_modules")
                 continue;
