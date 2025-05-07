@@ -1,13 +1,9 @@
 package main
 
-func KeepBackend() {
+import "context"
 
+type HibernateController struct {
 }
 
-func KeepDisplay() {
-
-}
-
-func Restore() {
-	
+func (hc *HibernateController) KeepAwake(ctx context.Context) {
 }

@@ -1,21 +1,28 @@
 package main
 
-// #define WIN32_LEAN_AND_MEAN
-// #include <windows.h>
+import (
+	"context"
+	"syscall"
+	"time"
+)
 
-import "C"
+var (
+	kernel32                = syscall.NewLazyDLL("kernel32.dll")
+	SetThreadExecutionState = kernel32.NewProc("SetThreadExecutionState")
+)
 
-func KeepBackend() {
-	// C.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED)
-	C.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000040)
+type HibernateController struct {
 }
 
-func KeepDisplay() {
-	// C.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED | ES_AWAYMODE_REQUIRED)
-	C.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000002 | 0x00000040)
-}
-
-func Restore() {
-	// C.SetThreadExecutionState(ES_CONTINUOUS)
-	C.SetThreadExecutionState(0x80000000)
+func (hc *HibernateController) KeepAwake(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			// SetThreadExecutionState(ES_SYSTEM_REQUIRED)
+			SetThreadExecutionState.Call(0x00000001)
+		case <-ctx.Done():
+			break
+		}
+	}
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -20,8 +21,11 @@ func IgnoreOnError(err error, args ...any) {
 }
 
 func main() {
-	KeepBackend()
-	
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	hc := HibernateController{}
+	go hc.KeepAwake(ctx)
+
 	var err error
 	err = http.ListenAndServe(":3000", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := filepath.Join("./", r.URL.Path)
